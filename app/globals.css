@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --bg:      #0d0d14;
+  --panel:   #16161f;
+  --border:  #2a2a3d;
+  --accent:  #f0c040;
+  --accent2: #ff5f6d;
+  --text:    #e8e8f0;
+  --muted:   #6b6b88;
+  --radius:  14px;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-panel:      var(--panel);
+  --color-border-wof: var(--border);
+  --color-accent:     var(--accent);
+  --color-accent2:    var(--accent2);
+  --color-muted:      var(--muted);
+
+  --font-bungee: 'Bungee', cursive;
+  --font-dm:     'DM Sans', sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+@keyframes shimmer {
+  to { background-position: 200% center; }
+}
+
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
