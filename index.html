@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wheel of Fortune</title>
+<style>
+  /* ── Google Fonts ── */
+  @import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@400;500;600&display=swap');
+
+  /* ── CSS Variables ── */
+  :root {
+    --bg:        #0d0d14;
+    --panel:     #16161f;
+    --border:    #2a2a3d;
+    --accent:    #f0c040;
+    --accent2:   #ff5f6d;
+    --text:      #e8e8f0;
+    --muted:     #6b6b88;
+    --radius:    14px;
+    --spin-dur:  4s;
+
+    --c0:#ff5f6d; --c1:#ff9a3c; --c2:#f0c040; --c3:#6be585;
+    --c4:#40d0f0; --c5:#8b7ffe; --c6:#f06292; --c7:#4dd0e1;
+    --c8:#aed581; --c9:#ff8a65; --c10:#ba68c8; --c11:#4fc3f7;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 60px;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-family: 'Bungee', cursive;
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    letter-spacing: 2px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent), var(--accent2));
+    background-size: 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 3s linear infinite;
+  }
+  @keyframes shimmer { to { background-position: 200% center; } }
+  header p { color: var(--muted); font-size: .9rem; margin-top: 6px; }
+
+  /* ── Main layout ── */
+  .main {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    justify-content: center;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  /* ── Wheel Section ── */
+  .wheel-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    flex: 0 0 auto;
+  }
+
+  .wheel-wrap {
+    position: relative;
+    width: min(440px, 90vw);
+    height: min(440px, 90vw);
+  }
+
+  /* Decorative glow ring */
+  .wheel-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    background: conic-gradient(var(--accent2), var(--accent), var(--accent2));
+    animation: ring-spin 6s linear infinite;
+    z-index: 0;
+  }
+  @keyframes ring-spin { to { transform: rotate(360deg); } }
+
+  .wheel-wrap::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: var(--bg);
+    z-index: 1;
+  }
+
+  #wheelCanvas {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: block;
+  }
+
+  /* ── Pointer ── */
+  .pointer {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 0;
+    filter: drop-shadow(0 0 6px rgba(240,192,64,.9));
+  }
+  .pointer svg { display: block; }
+
+  /* ── Hub cap ── */
+  .hub {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    z-index: 10;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff8e0, #c09000);
+    border: 3px solid #fff4b0;
+    box-shadow: 0 0 16px rgba(240,192,64,.7), inset 0 2px 4px rgba(255,255,255,.4);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bungee', cursive;
+    font-size: .65rem;
+    color: #5a4000;
+    letter-spacing: .5px;
+    transition: transform .15s;
+  }
+  .hub:hover { transform: translate(-50%,-50%) scale(1.08); }
+
+  /* ── Spin Button ── */
+  .btn-spin {
+    padding: 14px 48px;
+    background: linear-gradient(135deg, var(--accent2), #ff8c42);
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    font-family: 'Bungee', cursive;
+    font-size: 1.1rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(255,95,109,.45);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-spin:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,95,109,.55); }
+  .btn-spin:active:not(:disabled) { transform: translateY(0); }
+  .btn-spin:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── Duration slider ── */
+  .duration-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: .83rem; color: var(--muted);
+  }
+  .duration-row input[type=range] {
+    accent-color: var(--accent);
+    width: 120px;
+  }
+  #durLabel { color: var(--text); font-weight: 600; min-width: 34px; }
+
+  /* ── Side Panel ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+    flex: 1 1 320px;
+    min-width: 280px;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .panel h2 {
+    font-family: 'Bungee', cursive;
+    font-size: 1rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+
+  /* ── Add Item Form ── */
+  .add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .field-row {
+    display: flex; gap: 8px;
+  }
+  .field-row input {
+    flex: 1;
+    background: #1e1e2e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 9px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .9rem;
+    transition: border-color .2s;
+  }
+  .field-row input:focus { outline: none; border-color: var(--accent); }
+  .field-row input::placeholder { color: var(--muted); }
+  #inputWeight { width: 80px; flex: 0 0 80px; }
+
+  .btn-add {
+    padding: 10px;
+    background: var(--accent);
+    color: #1a1000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Bungee', cursive;
+    font-size: .9rem;
+    cursor: pointer;
+    transition: opacity .15s, transform .15s;
+  }
+  .btn-add:hover { opacity: .88; transform: translateY(-1px); }
+
+  /* ── Items List ── */
+  .items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .items-list::-webkit-scrollbar { width: 4px; }
+  .items-list::-webkit-scrollbar-track { background: transparent; }
+  .items-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1e1e2e;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    transition: border-color .2s;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  .item-row:hover { border-color: var(--muted); }
+
+  .item-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  .item-label-edit {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .88rem;
+    min-width: 0;
+  }
+  .item-label-edit:focus { outline: 1px dashed var(--accent); border-radius: 4px; }
+
+  .item-weight-edit {
+    width: 52px;
+    background: #12121b;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--accent);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .83rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 3px 4px;
+  }
+  .item-weight-edit:focus { outline: none; border-color: var(--accent); }
+
+  .item-pct {
+    font-size: .75rem;
+    color: var(--muted);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .btn-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: color .15s, background .15s;
+  }
+  .btn-remove:hover { color: var(--accent2); background: rgba(255,95,109,.15); }
+
+  /* ── Import / Export ── */
+  .io-row {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .btn-io {
+    flex: 1;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  .btn-io:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.75);
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px 36px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+    transform: scale(.88);
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: 0 0 60px rgba(240,192,64,.2);
+  }
+  .modal-overlay.show .modal { transform: scale(1); }
+
+  .modal .trophy { font-size: 3.6rem; line-height: 1; margin-bottom: 12px; }
+  .modal h2 {
+    font-family: 'Bungee', cursive;
+    color: var(--accent);
+    font-size: 1.5rem;
+    margin-bottom: 6px;
+  }
+  .modal .winner-name {
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-word;
+    margin-bottom: 24px;
+    padding: 10px 16px;
+    background: #1e1e2e;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .btn-close-modal {
+    padding: 11px 36px;
+    background: var(--accent);
+    color: #1a1000;
+    border: none;
+    border-radius: 50px;
+    font-family: 'Bungee', cursive;
+    font-size: .95rem;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn-close-modal:hover { opacity: .85; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #2a2a3d;
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    padding: 10px 22px;
+    font-size: .85rem;
+    color: var(--text);
+    z-index: 300;
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  /* ── Responsive ── */
+  @media (max-width: 540px) {
+    .panel { max-width: 100%; }
+    header h1 { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎡 Wheel of Fortune</h1>
+  <p>Spin to decide — because every choice deserves drama.</p>
+</header>
+
+<div class="main">
+
+  <!-- ── Wheel Column ── -->
+  <div class="wheel-section">
+    <div class="wheel-wrap" id="wheelWrap">
+      <!-- Pointer arrow (top-center) -->
+      <div class="pointer">
+        <svg width="32" height="40" viewBox="0 0 32 40">
+          <polygon points="16,38 0,4 32,4" fill="#f0c040" stroke="#c09000" stroke-width="1.5"/>
+        </svg>
+      </div>
+
+      <canvas id="wheelCanvas" width="440" height="440"></canvas>
+
+      <!-- Hub / center button -->
+      <div class="hub" id="hubBtn" title="Spin!">SPIN</div>
+    </div>
+
+    <!-- Spin button & duration -->
+    <button class="btn-spin" id="btnSpin">🎰 SPIN THE WHEEL</button>
+
+    <div class="duration-row">
+      <span>Spin duration:</span>
+      <input type="range" id="durSlider" min="2" max="10" step="0.5" value="4">
+      <span id="durLabel">4 s</span>
+    </div>
+  </div>
+
+  <!-- ── Side Panel ── -->
+  <div class="panel">
+    <h2>⚙ Wheel Items</h2>
+
+    <!-- Add item form -->
+    <div class="add-form">
+      <div class="field-row">
+        <input type="text" id="inputLabel" placeholder="Item label…" maxlength="40">
+        <input type="number" id="inputWeight" placeholder="Weight" min="0.01" step="any" value="1">
+      </div>
+      <button class="btn-add" id="btnAdd">＋ Add Item</button>
+    </div>
+
+    <!-- List of items -->
+    <div>
+      <h2 style="margin-bottom:10px;">📋 Items <span id="itemCount" style="font-size:.8rem;color:var(--muted);"></span></h2>
+      <div class="items-list" id="itemsList"></div>
+    </div>
+
+    <!-- Import / Export / Reset -->
+    <div>
+      <h2 style="margin-bottom:10px;">💾 Data</h2>
+      <div class="io-row">
+        <button class="btn-io" id="btnExport">⬇ Export JSON</button>
+        <button class="btn-io" id="btnImport">⬆ Import JSON</button>
+        <button class="btn-io" id="btnReset" style="color:#ff5f6d;border-color:#ff5f6d22;">🗑 Reset</button>
+      </div>
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Winner Modal ── -->
+<div class="modal-overlay" id="winModal">
+  <div class="modal">
+    <div class="trophy" id="winnerTrophy">🏆</div>
+    <h2>We Have a Winner!</h2>
+    <div class="winner-name" id="winnerName"></div>
+    <button class="btn-close-modal" id="btnCloseModal">Continue</button>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   WHEEL OF FORTUNE — Pure Vanilla JS
+   Architecture:
+     - state         : single source of truth (items array)
+     - render()      : re-draws canvas from state
+     - renderList()  : re-renders the sidebar item list
+     - spin()        : weighted pick → deterministic animation
+══════════════════════════════════════════════════════════════ */
+
+// ── Palette ──────────────────────────────────────────────────
+const COLORS = [
+  '#ff5f6d','#ff9a3c','#f0c040','#6be585',
+  '#40d0f0','#8b7ffe','#f06292','#4dd0e1',
+  '#aed581','#ff8a65','#ba68c8','#4fc3f7',
+];
+
+// ── State ────────────────────────────────────────────────────
+let items = [];         // { id, label, weight }
+let spinning = false;
+let currentAngle = 0;   // radians, cumulative rotation of wheel
+
+const canvas  = document.getElementById('wheelCanvas');
+const ctx     = canvas.getContext('2d');
+const SIZE    = canvas.width;   // 440
+const CX      = SIZE / 2;
+const CY      = SIZE / 2;
+const R       = CX - 10;       // outer radius
+
+// ── Persistence ──────────────────────────────────────────────
+function save() {
+  localStorage.setItem('wof_items', JSON.stringify(items));
+}
+function load() {
+  try {
+    const raw = localStorage.getItem('wof_items');
+    if (raw) items = JSON.parse(raw);
+    if (!Array.isArray(items) || items.length === 0) setDefaults();
+  } catch { setDefaults(); }
+}
+function setDefaults() {
+  items = [
+    { id: uid(), label: 'Prize 🎁',    weight: 1 },
+    { id: uid(), label: 'Try Again 🔄', weight: 3 },
+    { id: uid(), label: 'Jackpot 💰',   weight: 0.5 },
+    { id: uid(), label: 'Bonus 🌟',     weight: 1.5 },
+    { id: uid(), label: 'Mystery 🎭',   weight: 1 },
+    { id: uid(), label: 'Free Spin ♻',  weight: 1 },
+  ];
+}
+function uid() { return Math.random().toString(36).slice(2,9); }
+
+// ── Weighted Randomness ───────────────────────────────────────
+function totalWeight() { return items.reduce((s, i) => s + i.weight, 0); }
+
+/**
+ * Pick an index using weighted probability.
+ * Returns index into items[].
+ */
+function weightedPick() {
+  const total = totalWeight();
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= items[i].weight;
+    if (r <= 0) return i;
+  }
+  return items.length - 1;
+}
+
+// ── Canvas Drawing ────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, SIZE, SIZE);
+
+  if (items.length === 0) {
+    // empty state
+    ctx.fillStyle = '#1e1e2e';
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6b6b88';
+    ctx.font = '600 18px DM Sans, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Add items to spin!', CX, CY);
+    return;
+  }
+
+  const total = totalWeight();
+  let startAngle = currentAngle;
+
+  items.forEach((item, idx) => {
+    const slice = (item.weight / total) * Math.PI * 2;
+    const endAngle = startAngle + slice;
+    const mid = startAngle + slice / 2;
+    const color = COLORS[idx % COLORS.length];
+
+    // ── Slice ──
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, R, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    // ── Slice border ──
+    ctx.strokeStyle = '#0d0d14';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // ── Label ──
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(mid);
+
+    // Text position: halfway from center to edge
+    const textDist = R * 0.62;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    // Shadow for readability
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 4;
+
+    // Truncate label if slice too small
+    const minArc = 0.22; // radians
+    const label = slice < minArc
+      ? ''
+      : slice < 0.5
+        ? truncate(item.label, 8)
+        : truncate(item.label, 14);
+
+    if (label) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `600 ${clamp(13, slice * R * 0.38, 17)}px DM Sans, sans-serif`;
+      ctx.fillText(label, textDist, 0);
+    }
+    ctx.restore();
+
+    startAngle = endAngle;
+  });
+
+  // ── Outer ring ──
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, Math.PI*2);
+  ctx.strokeStyle = '#0d0d14';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // ── Inner shadow ring ──
+  const grad = ctx.createRadialGradient(CX,CY,R*0.6,CX,CY,R);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.beginPath(); ctx.arc(CX,CY,R,0,Math.PI*2);
+  ctx.fillStyle = grad; ctx.fill();
+}
+
+function truncate(str, max) {
+  return str.length > max ? str.slice(0, max-1) + '…' : str;
+}
+function clamp(min, val, max) { return Math.max(min, Math.min(max, val)); }
+
+// ── Spin Logic ────────────────────────────────────────────────
+function spin() {
+  if (spinning || items.length === 0) return;
+  spinning = true;
+  document.getElementById('btnSpin').disabled = true;
+
+  // 1. Pick winner first
+  const winIdx = weightedPick();
+
+  // 2. Calculate which canvas angle the pointer (top = -π/2) must land on
+  //    so the winning slice is centered under the pointer.
+  const total = totalWeight();
+  let sliceStart = 0;
+  for (let i = 0; i < winIdx; i++) sliceStart += items[i].weight / total * Math.PI * 2;
+  const sliceMid = sliceStart + (items[winIdx].weight / total * Math.PI * 2) / 2;
+
+  // Pointer is at top-center = -π/2 from canvas default (right)
+  // We want currentAngle + extra = (-π/2) - sliceMid  (mod 2π)
+  // Add several full rotations for dramatic effect.
+  const spinDur = parseFloat(document.getElementById('durSlider').value) * 1000;
+  const extraSpins = 2 * Math.PI * (5 + Math.floor(Math.random() * 3)); // 5-7 full rounds
+  const targetDelta = ((-Math.PI/2 - sliceMid - currentAngle) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+  const totalDelta = extraSpins + targetDelta;
+
+  // 3. Animate with cubic ease-out
+  const startAngle = currentAngle;
+  let startTime = null;
+
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    const elapsed = ts - startTime;
+    const progress = Math.min(elapsed / spinDur, 1);
+    // Ease-out cubic
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    currentAngle = startAngle + totalDelta * eased;
+    render();
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // Normalise angle to avoid overflow
+      currentAngle = currentAngle % (Math.PI * 2);
+      spinning = false;
+      document.getElementById('btnSpin').disabled = false;
+      showWinner(winIdx);
+      playWinSound();
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+// ── Sound Effects (Web Audio API) ────────────────────────────
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playWinSound() {
+  try {
+    const ac = getAudioCtx();
+    // Simple fanfare: quick ascending notes
+    const notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.connect(gain); gain.connect(ac.destination);
+      osc.frequency.value = freq;
+      osc.type = 'triangle';
+      const t = ac.currentTime + i * 0.13;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t); osc.stop(t + 0.42);
+    });
+  } catch {}
+}
+
+function playTickSound() {
+  try {
+    const ac = getAudioCtx();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.frequency.value = 800;
+    osc.type = 'square';
+    const t = ac.currentTime;
+    gain.gain.setValueAtTime(0.06, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    osc.start(t); osc.stop(t + 0.05);
+  } catch {}
+}
+
+// ── Item List Rendering ───────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('itemsList');
+  const total = totalWeight();
+  document.getElementById('itemCount').textContent = `(${items.length})`;
+
+  list.innerHTML = '';
+  items.forEach((item, idx) => {
+    const pct = total > 0 ? ((item.weight / total) * 100).toFixed(1) : '0.0';
+    const color = COLORS[idx % COLORS.length];
+
+    const row = document.createElement('div');
+    row.className = 'item-row';
+    row.innerHTML = `
+      <div class="item-dot" style="background:${color};color:${color};"></div>
+      <input class="item-label-edit" value="${escHtml(item.label)}" data-id="${item.id}" title="Click to edit label">
+      <input class="item-weight-edit" type="number" value="${item.weight}" data-id="${item.id}" min="0.01" step="any" title="Weight">
+      <span class="item-pct">${pct}%</span>
+      <button class="btn-remove" data-id="${item.id}" title="Remove">✕</button>
+    `;
+    list.appendChild(row);
+  });
+
+  // Inline-edit label
+  list.querySelectorAll('.item-label-edit').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const val = e.target.value.trim();
+      if (!val) { toast('Label cannot be empty'); e.target.value = getItem(e.target.dataset.id).label; return; }
+      getItem(e.target.dataset.id).label = val;
+      save(); render();
+    });
+  });
+
+  // Inline-edit weight
+  list.querySelectorAll('.item-weight-edit').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const val = parseFloat(e.target.value);
+      if (isNaN(val) || val <= 0) { toast('Weight must be a positive number'); e.target.value = getItem(e.target.dataset.id).weight; return; }
+      getItem(e.target.dataset.id).weight = val;
+      save(); render(); renderList();
+    });
+  });
+
+  // Remove buttons
+  list.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.addEventListener('click', e => {
+      items = items.filter(i => i.id !== btn.dataset.id);
+      save(); render(); renderList();
+    });
+  });
+}
+
+function getItem(id) { return items.find(i => i.id === id); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Add Item ─────────────────────────────────────────────────
+document.getElementById('btnAdd').addEventListener('click', addItem);
+document.getElementById('inputLabel').addEventListener('keydown', e => { if(e.key==='Enter') addItem(); });
+document.getElementById('inputWeight').addEventListener('keydown', e => { if(e.key==='Enter') addItem(); });
+
+function addItem() {
+  const label  = document.getElementById('inputLabel').value.trim();
+  const weight = parseFloat(document.getElementById('inputWeight').value);
+  if (!label)              { toast('Please enter a label'); return; }
+  if (isNaN(weight)||weight<=0) { toast('Weight must be a positive number'); return; }
+
+  items.push({ id: uid(), label, weight });
+  document.getElementById('inputLabel').value  = '';
+  document.getElementById('inputWeight').value = '1';
+  document.getElementById('inputLabel').focus();
+  save(); render(); renderList();
+}
+
+// ── Spin Triggers ─────────────────────────────────────────────
+document.getElementById('btnSpin').addEventListener('click', spin);
+document.getElementById('hubBtn').addEventListener('click', spin);
+
+// ── Duration Slider ───────────────────────────────────────────
+const durSlider = document.getElementById('durSlider');
+durSlider.addEventListener('input', () => {
+  document.getElementById('durLabel').textContent = durSlider.value + ' s';
+});
+
+// ── Winner Modal ──────────────────────────────────────────────
+function showWinner(idx) {
+  const emojis = ['🏆','🎉','🎊','⭐','🌟','💥','🎁','✨'];
+  document.getElementById('winnerTrophy').textContent = emojis[idx % emojis.length];
+  document.getElementById('winnerName').textContent   = items[idx].label;
+  document.getElementById('winModal').classList.add('show');
+}
+document.getElementById('btnCloseModal').addEventListener('click', () => {
+  document.getElementById('winModal').classList.remove('show');
+});
+document.getElementById('winModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('winModal'))
+    document.getElementById('winModal').classList.remove('show');
+});
+
+// ── Toast ─────────────────────────────────────────────────────
+function toast(msg, dur=2600) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Export / Import / Reset ───────────────────────────────────
+document.getElementById('btnExport').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(items, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wheel-of-fortune.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Wheel exported!');
+});
+
+document.getElementById('btnImport').addEventListener('click', () => {
+  document.getElementById('fileInput').click();
+});
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data)) throw new Error('Not an array');
+      // validate & sanitise
+      items = data.map(d => ({
+        id:     uid(),
+        label:  String(d.label || 'Item').slice(0, 40),
+        weight: Math.max(0.01, parseFloat(d.weight) || 1),
+      }));
+      if (items.length === 0) throw new Error('Empty');
+      save(); render(); renderList();
+      toast(`Imported ${items.length} items ✓`);
+    } catch { toast('Invalid JSON file'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  if (!confirm('Reset to defaults?')) return;
+  setDefaults(); save(); render(); renderList();
+  toast('Reset to defaults');
+});
+
+// ── Init ──────────────────────────────────────────────────────
+load();
+render();
+renderList();
+</script>
+</body>
+</html>
