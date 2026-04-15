@@ -131,12 +131,14 @@ export function WheelDashboard() {
   const [presetName, setPresetName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [presetSaving, setPresetSaving] = useState(false);
   const [presetUpdating, setPresetUpdating] = useState(false);
   const [presetDeleting, setPresetDeleting] = useState(false);
   const [spinningRemotely, setSpinningRemotely] = useState(false);
   const [copyingLink, setCopyingLink] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showNewPresetDialog, setShowNewPresetDialog] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const [creatingPreset, setCreatingPreset] = useState(false);
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
 
@@ -148,6 +150,10 @@ export function WheelDashboard() {
     () => items.reduce((sum, item) => sum + (item.weight > 0 ? item.weight : 0), 0),
     [items]
   );
+  const hasSelectedUserPreset = selectedPreset.startsWith("user:");
+  const isPresetActionBusy = copyingLink || spinningRemotely || presetUpdating || presetDeleting;
+  const selectedPresetId = hasSelectedUserPreset ? selectedPreset.replace("user:", "") : null;
+  const selectedPresetRecord = selectedPresetId ? userPresets.find((preset) => preset.id === selectedPresetId) ?? null : null;
 
   useEffect(() => {
     let active = true;
@@ -228,15 +234,63 @@ export function WheelDashboard() {
     setPendingFocusId(newItem.id);
   }
 
-  function applyPreset() {
-    if (!selectedPreset.startsWith("user:")) return;
+  function handlePresetSelectionChange(nextValue: string) {
+    setSelectedPreset(nextValue);
+    if (!nextValue.startsWith("user:")) return;
 
-    const id = selectedPreset.replace("user:", "");
+    const id = nextValue.replace("user:", "");
     const preset = userPresets.find((item) => item.id === id);
     if (!preset) return;
 
     setItems(preset.items.map((item) => ({ ...item, id: uid() })));
     setStatus(`Loaded preset: ${preset.name}`);
+  }
+
+  function openNewPresetDialog() {
+    setNewPresetName("");
+    setShowNewPresetDialog(true);
+  }
+
+  async function createPresetFromDialog() {
+    const trimmedName = newPresetName.trim().slice(0, 60);
+
+    if (!trimmedName) {
+      setStatus("Enter a preset name");
+      return;
+    }
+
+    setCreatingPreset(true);
+    setStatus("Creating preset...");
+
+    try {
+      const res = await fetch("/api/wheel-presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName, items: [] }),
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error ?? "Could not create preset");
+      }
+
+      const data = await res.json();
+      const preset = data.preset as UserPreset | undefined;
+      if (preset) {
+        setUserPresets((prev) => [preset, ...prev]);
+        setSelectedPreset(`user:${preset.id}`);
+        setPresetName(preset.name);
+        setItems([]);
+      }
+
+      setShowNewPresetDialog(false);
+      setNewPresetName("");
+      setStatus(`Preset created: ${trimmedName}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not create preset");
+    } finally {
+      setCreatingPreset(false);
+    }
   }
 
   useEffect(() => {
@@ -280,70 +334,81 @@ export function WheelDashboard() {
     }
 
     setSaving(true);
-    setStatus("Saving...");
+    setStatus("Saving wheel and preset...");
 
     try {
-      const res = await fetch("/api/wheel-config", {
+      const configRes = await fetch("/api/wheel-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: cleaned }),
       });
 
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
+      if (!configRes.ok) {
+        const payload = await configRes.json().catch(() => null);
         throw new Error(payload?.error ?? "Save failed");
       }
 
+      let presetMessage = "";
+
+      if (hasSelectedUserPreset) {
+        const presetId = selectedPreset.replace("user:", "");
+        const existingPreset = userPresets.find((preset) => preset.id === presetId);
+        const trimmedName = presetName.trim().slice(0, 60) || existingPreset?.name || "Untitled preset";
+
+        const presetRes = await fetch(`/api/wheel-presets/${presetId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: trimmedName,
+            items: cleaned,
+          }),
+        });
+
+        if (!presetRes.ok) {
+          const payload = await presetRes.json().catch(() => null);
+          throw new Error(payload?.error ?? "Wheel saved, but preset update failed");
+        }
+
+        const presetData = await presetRes.json();
+        const updatedPreset = presetData.preset as UserPreset | undefined;
+        if (updatedPreset) {
+          setUserPresets((prev) => prev.map((preset) => (preset.id === updatedPreset.id ? updatedPreset : preset)));
+          setPresetName(updatedPreset.name);
+          presetMessage = `Updated preset: ${updatedPreset.name}`;
+        }
+      } else {
+        const typedName = presetName.trim().slice(0, 60);
+        const generatedName = `Preset ${userPresets.length + 1}`;
+        const nextPresetName = typedName || generatedName;
+
+        const presetRes = await fetch("/api/wheel-presets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: nextPresetName, items: cleaned }),
+        });
+
+        if (!presetRes.ok) {
+          const payload = await presetRes.json().catch(() => null);
+          throw new Error(payload?.error ?? "Wheel saved, but preset creation failed");
+        }
+
+        const presetData = await presetRes.json();
+        const createdPreset = presetData.preset as UserPreset | undefined;
+        if (createdPreset) {
+          setUserPresets((prev) => [createdPreset, ...prev]);
+          setSelectedPreset(`user:${createdPreset.id}`);
+          setPresetName(createdPreset.name);
+          presetMessage = `Created preset: ${createdPreset.name}`;
+        }
+      }
+
       setItems(cleaned);
-      setStatus(`Saved ${cleaned.length} item${cleaned.length === 1 ? "" : "s"}`);
+      const itemLabel = `${cleaned.length} item${cleaned.length === 1 ? "" : "s"}`;
+      setStatus(presetMessage ? `Saved ${itemLabel}. ${presetMessage}` : `Saved ${itemLabel}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Save failed");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function saveAsPreset() {
-    const cleaned = sanitizeItems(items);
-    const trimmedName = presetName.trim().slice(0, 60);
-
-    if (!trimmedName) {
-      setStatus("Enter a preset name first");
-      return;
-    }
-
-    if (cleaned.length === 0) {
-      setStatus("Add at least one valid item before creating a preset");
-      return;
-    }
-
-    setPresetSaving(true);
-    setStatus("Saving preset...");
-
-    try {
-      const res = await fetch("/api/wheel-presets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName, items: cleaned }),
-      });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(payload?.error ?? "Could not save preset");
-      }
-
-      const data = await res.json();
-      const preset = data.preset as UserPreset | undefined;
-      if (preset) {
-        setUserPresets((prev) => [preset, ...prev]);
-        setSelectedPreset(`user:${preset.id}`);
-      }
-      setPresetName("");
-      setStatus(`Preset saved: ${trimmedName}`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not save preset");
-    } finally {
-      setPresetSaving(false);
     }
   }
 
@@ -515,144 +580,211 @@ export function WheelDashboard() {
   }
 
   return (
-    <section className="w-full max-w-4xl rounded-xl border border-[#2a2a3d] bg-[#16161f] p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2a3d] pb-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Wheel Dashboard</h1>
-          <p className="text-sm text-[#a1a1b3]">Configure wheel entries, save setup, and manage presets.</p>
-        </div>
-        <div className="flex gap-2">
+    <section className="w-full max-w-6xl space-y-5">
+      <div className="rounded-2xl border border-[#2a2a3d] bg-[#16161f] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Wheel Dashboard</h1>
+            <p className="mt-1 text-sm text-[#a1a1b3]">
+              Manage presets, edit slices, then save the wheel you want to run live.
+            </p>
+          </div>
           <Button variant="ghost" onClick={logout} disabled={loggingOut}>
             {loggingOut ? "Logging out..." : "Logout"}
           </Button>
-          <Button variant="ghost" onClick={() => addItem()}>
-            Add item
-          </Button>
-          <Button variant="add" onClick={saveConfig} disabled={saving}>
-            {saving ? "Saving..." : "Save to database"}
-          </Button>
         </div>
-      </div>
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div>
-          <div className="mb-3 rounded-lg border border-[#2a2a3d] bg-[#12121b] p-3">
-            <p className="mb-2 text-xs text-[#a1a1b3]">Presets</p>
+        <div className="mt-4 rounded-xl border border-[#2a2a3d] bg-[#12121b] p-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-[11px] uppercase tracking-wide text-[#6b6b88]">Selected preset</span>
+                <select
+                  value={selectedPreset}
+                  onChange={(event) => handlePresetSelectionChange(event.target.value)}
+                  className="w-full rounded-lg border border-[#2a2a3d] bg-[#1e1e2e] px-3 py-2 text-sm text-[#e8e8f0] focus:border-[#f0c040] focus:outline-none"
+                >
+                  {userPresets.length === 0 ? (
+                    <option value="">No presets yet</option>
+                  ) : (
+                    <optgroup label="Your Presets">
+                      {userPresets.map((preset) => (
+                        <option key={preset.id} value={`user:${preset.id}`}>
+                          {preset.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedPreset}
-                onChange={(event) => setSelectedPreset(event.target.value)}
-                className="min-w-[220px] rounded-lg border border-[#2a2a3d] bg-[#1e1e2e] px-3 py-2 text-sm text-[#e8e8f0] focus:outline-none focus:border-[#f0c040]"
-              >
-                {userPresets.length === 0 ? (
-                  <option value="">No presets yet</option>
-                ) : (
-                  <optgroup label="Your Presets">
-                    {userPresets.map((preset) => (
-                      <option key={preset.id} value={`user:${preset.id}`}>
-                        {preset.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-
-              <Button variant="ghost" onClick={applyPreset} disabled={!selectedPreset.startsWith("user:")}>
-                Load preset
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={copyObsLink}
-                disabled={!selectedPreset.startsWith("user:") || copyingLink}
-              >
-                {copyingLink ? "Copying..." : "Copy link"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={triggerRealtimeSpin}
-                disabled={!selectedPreset.startsWith("user:") || spinningRemotely}
-              >
-                {spinningRemotely ? "Triggering..." : "Trigger wheel"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={updateSelectedPreset}
-                disabled={!selectedPreset.startsWith("user:") || presetUpdating}
-              >
-                {presetUpdating ? "Updating..." : "Update preset"}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={deleteSelectedPreset}
-                disabled={!selectedPreset.startsWith("user:") || presetDeleting}
-              >
-                {presetDeleting ? "Deleting..." : "Delete preset"}
-              </Button>
+              <label className="space-y-1">
+                <span className="text-[11px] uppercase tracking-wide text-[#6b6b88]">Preset name</span>
+                <Input
+                  value={presetName}
+                  onChange={(event) => setPresetName(event.target.value)}
+                  placeholder="Give this setup a name"
+                  maxLength={60}
+                />
+              </label>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Input
-                value={presetName}
-                onChange={(event) => setPresetName(event.target.value)}
-                placeholder="New preset name"
-                maxLength={60}
-                className="max-w-[280px]"
-              />
-              <Button variant="ghost" onClick={saveAsPreset} disabled={presetSaving}>
-                {presetSaving ? "Saving..." : "Save current as preset"}
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              <Button variant="ghost" onClick={openNewPresetDialog}>
+                New preset
+              </Button>
+              <Button variant="add" onClick={saveConfig} disabled={saving}>
+                {saving ? "Saving..." : "Save wheel"}
               </Button>
             </div>
           </div>
+        </div>
 
-          <div className="space-y-3">
-            {items.map((item) => (
-              <div key={item.id} className="grid grid-cols-[1fr_110px_auto_72px] items-center gap-2">
-                <Input
-                  ref={(el) => {
-                    labelInputRefs.current[item.id] = el;
-                  }}
-                  value={item.label}
-                  placeholder="Label"
-                  maxLength={40}
-                  onChange={(event) => updateLabel(item.id, event.target.value)}
-                  onKeyDown={(event) => handleItemKeyDown(event, item.id)}
-                />
-                <Input
-                  type="number"
-                  min="0.01"
-                  step="any"
-                  value={item.weight === 0 ? "" : item.weight}
-                  placeholder="Weight"
-                  onChange={(event) => updateWeight(item.id, event.target.value)}
-                  onKeyDown={(event) => handleItemKeyDown(event, item.id)}
-                />
-                <Button variant="danger" onClick={() => removeItem(item.id)} disabled={items.length <= 1}>
-                  Remove
-                </Button>
-                <span className="text-right text-xs text-[#a1a1b3]">
-                  {item.weight > 0 && positiveTotalWeight > 0
-                    ? `${((item.weight / positiveTotalWeight) * 100).toFixed(1)}%`
-                    : "0.0%"}
-                </span>
+        <div className="mt-4 grid gap-2 text-sm text-[#a1a1b3] sm:grid-cols-3">
+          <p className="rounded-lg border border-[#2a2a3d] bg-[#12121b] px-3 py-2">
+            Items: <strong className="text-white">{items.length}</strong>
+          </p>
+          <p className="rounded-lg border border-[#2a2a3d] bg-[#12121b] px-3 py-2">
+            Total weight: <strong className="text-white">{totalWeightValue.toFixed(2)}</strong>
+          </p>
+          <p className="rounded-lg border border-[#2a2a3d] bg-[#12121b] px-3 py-2">
+            Active preset: <strong className="text-white">{selectedPresetRecord?.name ?? "Draft"}</strong>
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-5">
+          <div className="rounded-xl border border-[#2a2a3d] bg-[#12121b] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-[#f0c040]">Wheel Items</h2>
+                <p className="text-xs text-[#a1a1b3]">Press Enter in a row to insert an item below it.</p>
               </div>
-            ))}
+              <Button variant="ghost" onClick={() => addItem()}>
+                Add item
+              </Button>
+            </div>
+
+            <div className="mb-2 grid grid-cols-[1fr_110px_auto_72px] items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-[#6b6b88]">
+              <span>Label</span>
+              <span>Weight</span>
+              <span>Action</span>
+              <span className="text-right">Chance</span>
+            </div>
+
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div key={item.id} className="grid grid-cols-[1fr_110px_auto_72px] items-center gap-2 rounded-md bg-[#171724] p-2">
+                  <Input
+                    ref={(el) => {
+                      labelInputRefs.current[item.id] = el;
+                    }}
+                    value={item.label}
+                    placeholder="Label"
+                    maxLength={40}
+                    onChange={(event) => updateLabel(item.id, event.target.value)}
+                    onKeyDown={(event) => handleItemKeyDown(event, item.id)}
+                  />
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={item.weight === 0 ? "" : item.weight}
+                    placeholder="Weight"
+                    onChange={(event) => updateWeight(item.id, event.target.value)}
+                    onKeyDown={(event) => handleItemKeyDown(event, item.id)}
+                  />
+                  <Button variant="danger" onClick={() => removeItem(item.id)} disabled={items.length <= 1}>
+                    Remove
+                  </Button>
+                  <span className="text-right text-xs text-[#a1a1b3]">
+                    {item.weight > 0 && positiveTotalWeight > 0
+                      ? `${((item.weight / positiveTotalWeight) * 100).toFixed(1)}%`
+                      : "0.0%"}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <DashboardWheelPreview items={items} />
+        <aside className="space-y-5">
+          <div className="rounded-xl border border-[#2a2a3d] bg-[#12121b] p-4">
+            <h2 className="text-sm font-semibold text-[#f0c040]">Live Preview</h2>
+            <p className="mt-1 text-xs text-[#a1a1b3]">This is how your wheel currently looks on stream.</p>
+            <div className="mt-4">
+              <DashboardWheelPreview items={items} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#2a2a3d] bg-[#12121b] p-4">
+            <h2 className="text-sm font-semibold text-[#f0c040]">Preset Actions</h2>
+            <p className="mt-1 text-xs text-[#a1a1b3]">Run, share, update, or remove the selected preset.</p>
+            <div className="mt-3 grid gap-2">
+              <Button variant="ghost" onClick={copyObsLink} disabled={!hasSelectedUserPreset || isPresetActionBusy}>
+                {copyingLink ? "Copying..." : "Copy OBS link"}
+              </Button>
+              <Button variant="ghost" onClick={triggerRealtimeSpin} disabled={!hasSelectedUserPreset || isPresetActionBusy}>
+                {spinningRemotely ? "Triggering..." : "Trigger realtime spin"}
+              </Button>
+              <Button variant="ghost" onClick={updateSelectedPreset} disabled={!hasSelectedUserPreset || isPresetActionBusy}>
+                {presetUpdating ? "Updating..." : "Update selected preset"}
+              </Button>
+              <Button variant="danger" onClick={deleteSelectedPreset} disabled={!hasSelectedUserPreset || isPresetActionBusy}>
+                {presetDeleting ? "Deleting..." : "Delete selected preset"}
+              </Button>
+            </div>
+          </div>
+        </aside>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[#2a2a3d] pt-4 text-sm text-[#a1a1b3]">
-        <p>
-          Items: <strong className="text-white">{items.length}</strong>
-        </p>
-        <p>
-          Total weight: <strong className="text-white">{totalWeightValue.toFixed(2)}</strong>
-        </p>
-      </div>
+      <p className="min-h-5 rounded-md border border-[#2a2a3d] bg-[#1b1b28] px-3 py-2 text-sm text-[#f0c040]">{status}</p>
 
-      <p className="mt-3 min-h-5 text-sm text-[#f0c040]">{status}</p>
+      {showNewPresetDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#2a2a3d] bg-[#16161f] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+            <h3 className="text-lg font-semibold">Create New Preset</h3>
+            <p className="mt-1 text-sm text-[#a1a1b3]">Create an empty preset and start filling items after selection.</p>
+
+            <div className="mt-4 space-y-1">
+              <label htmlFor="new-preset-name" className="text-[11px] uppercase tracking-wide text-[#6b6b88]">
+                Preset name
+              </label>
+              <Input
+                id="new-preset-name"
+                value={newPresetName}
+                onChange={(event) => setNewPresetName(event.target.value)}
+                placeholder="e.g. Weekly Viewer Picks"
+                maxLength={60}
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void createPresetFromDialog();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowNewPresetDialog(false);
+                  setNewPresetName("");
+                }}
+                disabled={creatingPreset}
+              >
+                Cancel
+              </Button>
+              <Button variant="add" onClick={createPresetFromDialog} disabled={creatingPreset}>
+                {creatingPreset ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

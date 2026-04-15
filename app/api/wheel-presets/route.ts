@@ -81,10 +81,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Preset name is required" }, { status: 400 });
   }
 
-  if (items.length === 0) {
-    return NextResponse.json({ error: "Preset must have at least one item" }, { status: 400 });
-  }
-
   const { data, error } = await supabase
     .from("wheel_presets")
     .insert({

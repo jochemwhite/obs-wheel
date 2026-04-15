@@ -14,7 +14,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen px-4 py-8">
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-6xl">
         <WheelDashboard />
       </div>
     </main>
