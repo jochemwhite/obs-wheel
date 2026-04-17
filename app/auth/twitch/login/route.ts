@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { neededEventSubScopes } from "@/server/twitch/eventsub/needed-event-subscriptions";
+import { env } from "@/lib/env";
 
 // Add extra OAuth scopes here that are not tied to EventSub subscriptions.
 // Example: "moderator:manage:announcements"
@@ -28,10 +29,28 @@ const TWITCH_SCOPES = Array.from(
   .sort()
   .join(" ");
 
+function normalizeOrigin(raw: string): string {
+  const firstValue = raw.split(",")[0]?.trim() ?? raw;
+  if (firstValue.startsWith("http://") || firstValue.startsWith("https://")) {
+    return firstValue.replace(/\/+$/, "");
+  }
+  return `https://${firstValue.replace(/\/+$/, "")}`;
+}
+
+function sanitizeNextPath(input: string | null): string {
+  if (!input) return "/dashboard";
+  if (!input.startsWith("/") || input.startsWith("//")) return "/dashboard";
+  return input;
+}
+
 export async function GET(request: Request) {
-  const { origin, searchParams } = new URL(request.url);
-  const next = searchParams.get("next") ?? "/dashboard";
-  const redirectTo = `${origin}/auth/twitch/callback?next=${encodeURIComponent(next)}`;
+  const url = new URL(request.url);
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const configuredOrigin = normalizeOrigin(env.NEXT_PUBLIC_BASE_URL);
+  const publicOrigin = configuredOrigin || (forwardedHost ? normalizeOrigin(forwardedHost) : url.origin);
+
+  const next = sanitizeNextPath(url.searchParams.get("next"));
+  const redirectTo = `${publicOrigin}/auth/twitch/callback`;
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
@@ -46,7 +65,7 @@ export async function GET(request: Request) {
   });
 
   if (error || !data.url) {
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    return NextResponse.redirect(`${publicOrigin}/auth/auth-code-error`);
   }
 
   return NextResponse.redirect(data.url);
