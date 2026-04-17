@@ -18,9 +18,7 @@ export default function LoginPage() {
           Continue with Twitch
         </a>
 
-        <p className="mt-5 text-xs text-[#8b8b9d] text-left wrap-break-word">
-          Scopes: {TWITCH_SCOPES.join(" ")}
-        </p>
+        <p className="mt-5 text-xs text-[#8b8b9d] text-left wrap-break-word">EventSub scopes: {TWITCH_SCOPES.join(" ")}</p>
       </section>
     </main>
   );

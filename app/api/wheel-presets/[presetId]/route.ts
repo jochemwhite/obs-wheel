@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isSupabaseUserAllowed } from "@/server/auth/broadcaster-access";
+import type { TablesUpdate } from "@/types/supabase";
 
 type WheelItem = {
   id: string;
@@ -43,6 +45,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/wheel-
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (!(await isSupabaseUserAllowed(supabase, user))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await request.json();
   const name = body?.name === undefined ? undefined : sanitizeName(body.name);
   const items = body?.items === undefined ? undefined : sanitizeItems(body.items);
@@ -55,7 +61,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/wheel-
     return NextResponse.json({ error: "Preset must have at least one item" }, { status: 400 });
   }
 
-  const updatePayload: Record<string, unknown> = {};
+  const updatePayload: TablesUpdate<"wheel_presets"> = {};
   if (name !== undefined) updatePayload.name = name;
   if (items !== undefined) updatePayload.items_json = items;
 
@@ -106,6 +112,10 @@ export async function DELETE(_request: Request, context: RouteContext<"/api/whee
 
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!(await isSupabaseUserAllowed(supabase, user))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { error } = await supabase

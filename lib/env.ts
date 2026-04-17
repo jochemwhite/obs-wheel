@@ -6,6 +6,9 @@ export const env = createEnv({
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     TWITCH_CLIENT_SECRET: z.string().min(1),
     TWITCH_WEBHOOK_SECRET: z.string().min(10),
+    CONTROL_API_KEY: z.string().min(1).default("change-me-control-key"),
+    CONTROL_API_BASE_URL: z.string().min(1).default("http://127.0.0.1:3000"),
+    ALLOWED_TWITCH_BROADCASTER_IDS: z.string().default(""),
     TOKEN_ENCRYPTION_KEY: z
       .string()
       .length(64, "Encryption key must be 64 hex characters (32 bytes)"),

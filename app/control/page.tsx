@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { WheelDashboard } from "@/components/dashboard/WheelDashboard";
+import { ControlDeck } from "@/components/control/ControlDeck";
 import { isSupabaseUserAllowed } from "@/server/auth/broadcaster-access";
 
-export default async function DashboardPage() {
+export default async function ControlPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -18,11 +18,6 @@ export default async function DashboardPage() {
     redirect("/auth/not-allowed");
   }
 
-  return (
-    <main className="min-h-screen px-4 py-8">
-      <div className="mx-auto w-full max-w-6xl">
-        <WheelDashboard />
-      </div>
-    </main>
-  );
+  return <ControlDeck />;
 }
+

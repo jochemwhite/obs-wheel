@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import checkEventSubscriptions from "@/server/twitch/eventsub/check-event-subscriptions";
 import { encryptToken } from "@/server/crypto";
+import { isBroadcasterIdAllowed } from "@/server/auth/broadcaster-access";
 
 export async function GET(request: Request) {
   let { origin } = new URL(request.url);
@@ -42,6 +43,11 @@ export async function GET(request: Request) {
 
     if (!twitchUserId || !twitchUsername) {
       return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+    }
+
+    if (!isBroadcasterIdAllowed(twitchUserId)) {
+      await supabase.auth.signOut();
+      return NextResponse.redirect(`${origin}/auth/not-allowed`);
     }
 
     // Encrypt tokens before storing
