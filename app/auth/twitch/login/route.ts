@@ -37,19 +37,19 @@ function normalizeOrigin(raw: string): string {
   return `https://${firstValue.replace(/\/+$/, "")}`;
 }
 
-function sanitizeNextPath(input: string | null): string {
-  if (!input) return "/dashboard";
-  if (!input.startsWith("/") || input.startsWith("//")) return "/dashboard";
-  return input;
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const configuredOrigin = normalizeOrigin(env.NEXT_PUBLIC_BASE_URL);
-  const publicOrigin = configuredOrigin || (forwardedHost ? normalizeOrigin(forwardedHost) : url.origin);
-
-  const next = sanitizeNextPath(url.searchParams.get("next"));
+  const isLocalEnv = process.env.NODE_ENV === "development";
+  const publicOrigin =
+    isLocalEnv || isLocalHost(url.hostname)
+      ? normalizeOrigin(url.origin)
+      : request.headers.get("x-forwarded-host")
+        ? normalizeOrigin(request.headers.get("x-forwarded-host") as string)
+        : normalizeOrigin(env.NEXT_PUBLIC_BASE_URL);
   const redirectTo = `${publicOrigin}/auth/twitch/callback`;
 
   const supabase = await createClient();
